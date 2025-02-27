@@ -63,23 +63,25 @@ def main(page: ft.Page):
     )
 
     def join_chat_click(e):
-
         if not join_user_name.value.strip():
             join_user_name.error_text = "Por favor, introduza um valor válido."
             join_user_name.update()
-        else:
+            return
 
-            page.session.set("user_name", join_user_name.value.strip())
-            join_user_name.disabled = True
-            join_button.disabled = True
-            page.pubsub.send_all(
-                Message(
-                    user_name=join_user_name.value.strip(),
-                    text=f"{join_user_name.value.strip()} juntou-se ao grupo.",
-                    message_type="login_message",
-                )
+        user_name = join_user_name.value.strip()
+        page.session.set("user_name", user_name)
+        join_user_name.disabled = True
+        join_button.disabled = True
+        page.update()
+
+        # Automatically send a join message to the chat
+        page.pubsub.send_all(
+            Message(
+                user_name=user_name,
+                text=f"🟢 {user_name} juntou-se ao chat.",
+                message_type="chat_message",  # Treat as normal chat message
             )
-            page.update()
+        )
 
     # Join button to submit the name
     join_button = ft.ElevatedButton(text="Juntar-se ao grupo!", on_click=join_chat_click)
@@ -108,7 +110,16 @@ def main(page: ft.Page):
         user_name = page.session.get("user_name")
         is_current_user = message.user_name == user_name 
         if message.message_type == "chat_message":
-            m = ChatMessage(message, is_current_user)
+            if "juntou-se ao chat" in message.text:  # Check if it's a join message
+                m = ft.Text(
+                    message.text,
+                    italic=True,
+                    weight="bold",
+                    color=ft.Colors.GREEN,  # Make it green for visibility
+                )
+            else:
+                m = ChatMessage(message, is_current_user)
+
         else:
             m = ft.Text(message.text, italic=True, color=ft.Colors.BLACK45, size=12)
         chat.controls.append(m)

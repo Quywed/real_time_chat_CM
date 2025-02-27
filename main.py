@@ -9,7 +9,7 @@ class Message:
 
 
 class ChatMessage(ft.Row):
-    def __init__(self, message: Message):
+    def __init__(self, message: Message, is_current_user: bool):
         super().__init__()
         self.vertical_alignment = ft.CrossAxisAlignment.START
         self.controls = [
@@ -27,6 +27,8 @@ class ChatMessage(ft.Row):
                 spacing=5,
             ),
         ]
+
+        self.alignment = ft.MainAxisAlignment.END if is_current_user else ft.MainAxisAlignment.START
 
     def get_initials(self, user_name: str):
         return user_name[:1].capitalize() if user_name else "U"
@@ -52,41 +54,41 @@ class ChatMessage(ft.Row):
 
 def main(page: ft.Page):
     page.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
-    page.title = "Flet Chat"
+    page.title = "Chat em Tempo Real"
 
-    # Text field for the user name
+
     join_user_name = ft.TextField(
-        label="Enter your name",
+        label="Introduza o nome do seu utilizador",
         autofocus=True,
     )
 
     def join_chat_click(e):
-        # Check if the name is empty
+
         if not join_user_name.value.strip():
-            join_user_name.error_text = "Name cannot be blank!"
+            join_user_name.error_text = "Por favor, introduza um valor válido."
             join_user_name.update()
         else:
-            # Store the user name in the session specific to this tab
+
             page.session.set("user_name", join_user_name.value.strip())
-            join_user_name.disabled = True  # Disable the name input
-            join_button.disabled = True  # Disable the join button
+            join_user_name.disabled = True
+            join_button.disabled = True
             page.pubsub.send_all(
                 Message(
                     user_name=join_user_name.value.strip(),
-                    text=f"{join_user_name.value.strip()} has joined the chat.",
+                    text=f"{join_user_name.value.strip()} juntou-se ao grupo.",
                     message_type="login_message",
                 )
             )
             page.update()
 
     # Join button to submit the name
-    join_button = ft.ElevatedButton(text="Join Chat", on_click=join_chat_click)
+    join_button = ft.ElevatedButton(text="Juntar-se ao grupo!", on_click=join_chat_click)
 
     def send_message_click(e):
         user_name = page.session.get("user_name")
 
         if not user_name:
-            join_user_name.error_text = "Please enter your name first!"
+            join_user_name.error_text = "Introduza o seu utilizador primeiro!"
             join_user_name.update()
             return
 
@@ -103,8 +105,10 @@ def main(page: ft.Page):
             page.update()
 
     def on_message(message: Message):
+        user_name = page.session.get("user_name")
+        is_current_user = message.user_name == user_name 
         if message.message_type == "chat_message":
-            m = ChatMessage(message)
+            m = ChatMessage(message, is_current_user)
         else:
             m = ft.Text(message.text, italic=True, color=ft.Colors.BLACK45, size=12)
         chat.controls.append(m)
@@ -112,16 +116,13 @@ def main(page: ft.Page):
 
     page.pubsub.subscribe(on_message)
 
-    # Chat messages container
     chat = ft.ListView(
         expand=True,
         spacing=10,
         auto_scroll=True,
     )
 
-    # New message input field
     new_message = ft.TextField(
-        hint_text="Write a message...",
         autofocus=True,
         shift_enter=True,
         min_lines=1,
@@ -131,7 +132,7 @@ def main(page: ft.Page):
         on_submit=send_message_click,
     )
 
-    # Layout
+
     page.add(
         ft.Row([join_user_name, join_button], alignment=ft.MainAxisAlignment.CENTER),
         ft.Container(
@@ -146,7 +147,6 @@ def main(page: ft.Page):
                 new_message,
                 ft.IconButton(
                     icon=ft.Icons.SEND_ROUNDED,
-                    tooltip="Send message",
                     on_click=send_message_click,
                 ),
             ]

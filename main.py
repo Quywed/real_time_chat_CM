@@ -1,11 +1,11 @@
 import flet as ft
 
-
 class Message:
-    def __init__(self, user_name: str, text: str, message_type: str):
+    def __init__(self, user_name: str, text: str, message_type: str, chat_room: str):
         self.user_name = user_name
         self.text = text
         self.message_type = message_type
+        self.chat_room = chat_room
 
 
 class ChatMessage(ft.Row):
@@ -56,10 +56,14 @@ def main(page: ft.Page):
     page.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
     page.title = "Chat em Tempo Real"
 
-
     join_user_name = ft.TextField(
         label="Introduza o nome do seu utilizador",
         autofocus=True,
+    )
+
+    join_chat_room = ft.TextField(
+        label="Introduza o nome da sala de chat",
+        autofocus=False,
     )
 
     def join_chat_click(e):
@@ -68,9 +72,19 @@ def main(page: ft.Page):
             join_user_name.update()
             return
 
+        if not join_chat_room.value.strip():
+            join_chat_room.error_text = "Por favor, introduza um valor válido."
+            join_chat_room.update()
+            return
+
         user_name = join_user_name.value.strip()
-        page.session.set("user_name", user_name)
+        chat_room = join_chat_room.value.strip()
+
+        page.client_storage.set("user_name", user_name)
+        page.client_storage.set("chat_room", chat_room)
+
         join_user_name.disabled = True
+        join_chat_room.disabled = True
         join_button.disabled = True
         page.update()
 
@@ -79,7 +93,8 @@ def main(page: ft.Page):
             Message(
                 user_name=user_name,
                 text=f"🟢 {user_name} juntou-se ao chat.",
-                message_type="chat_message",  # Treat as normal chat message
+                message_type="chat_message",
+                chat_room=chat_room,
             )
         )
 
@@ -87,11 +102,17 @@ def main(page: ft.Page):
     join_button = ft.ElevatedButton(text="Juntar-se ao grupo!", on_click=join_chat_click)
 
     def send_message_click(e):
-        user_name = page.session.get("user_name")
+        user_name = page.client_storage.get("user_name")
+        chat_room = page.client_storage.get("chat_room")
 
         if not user_name:
             join_user_name.error_text = "Introduza o seu utilizador primeiro!"
             join_user_name.update()
+            return
+
+        if not chat_room:
+            join_chat_room.error_text = "Introduza a sala de chat primeiro!"
+            join_chat_room.update()
             return
 
         if new_message.value.strip():
@@ -100,6 +121,7 @@ def main(page: ft.Page):
                     user_name,
                     new_message.value.strip(),
                     message_type="chat_message",
+                    chat_room=chat_room,
                 )
             )
             new_message.value = ""
@@ -107,7 +129,12 @@ def main(page: ft.Page):
             page.update()
 
     def on_message(message: Message):
-        user_name = page.session.get("user_name")
+        user_name = page.client_storage.get("user_name")
+        chat_room = page.client_storage.get("chat_room")
+
+        if message.chat_room != chat_room:
+            return  # Ignore messages from other chat rooms
+
         is_current_user = message.user_name == user_name 
         if message.message_type == "chat_message":
             if "juntou-se ao chat" in message.text:  # Check if it's a join message
@@ -143,9 +170,8 @@ def main(page: ft.Page):
         on_submit=send_message_click,
     )
 
-
     page.add(
-        ft.Row([join_user_name, join_button], alignment=ft.MainAxisAlignment.CENTER),
+        ft.Row([join_user_name, join_chat_room, join_button], alignment=ft.MainAxisAlignment.CENTER),
         ft.Container(
             content=chat,
             border=ft.border.all(1, ft.Colors.OUTLINE),
@@ -165,4 +191,4 @@ def main(page: ft.Page):
     )
 
 
-ft.app(target=main)
+ft.app(target=main, view=ft.WEB_BROWSER, port=8080)

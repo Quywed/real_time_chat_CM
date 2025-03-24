@@ -1,243 +1,169 @@
 import flet as ft
+import datetime
 
-class Message:
-    def __init__(self, user_name: str, text: str, message_type: str, chat_room: str):
-        self.user_name = user_name
-        self.text = text
-        self.message_type = message_type
-        self.chat_room = chat_room
-
-
-class ChatMessage(ft.Row):
-    def __init__(self, message: Message, is_current_user: bool):
-        super().__init__()
-        self.vertical_alignment = ft.CrossAxisAlignment.START
-        self.controls = [
-            ft.CircleAvatar(
-                content=ft.Text(self.get_initials(message.user_name)),
-                color=ft.Colors.WHITE,
-                bgcolor=self.get_avatar_color(message.user_name),
-            ),
-            ft.Column(
-                [
-                    ft.Text(message.user_name, weight="bold"),
-                    ft.Text(message.text, selectable=True),
-                ],
-                tight=True,
-                spacing=5,
-            ),
-        ]
-
-        self.alignment = ft.MainAxisAlignment.END if is_current_user else ft.MainAxisAlignment.START
-
-    def get_initials(self, user_name: str):
-        return user_name[:1].capitalize() if user_name else "U"
-
-    def get_avatar_color(self, user_name: str):
-        colors_lookup = [
-            ft.Colors.AMBER,
-            ft.Colors.BLUE,
-            ft.Colors.BROWN,
-            ft.Colors.CYAN,
-            ft.Colors.GREEN,
-            ft.Colors.INDIGO,
-            ft.Colors.LIME,
-            ft.Colors.ORANGE,
-            ft.Colors.PINK,
-            ft.Colors.PURPLE,
-            ft.Colors.RED,
-            ft.Colors.TEAL,
-            ft.Colors.YELLOW,
-        ]
-        return colors_lookup[hash(user_name) % len(colors_lookup)]
-
-
+# Main Flet app
 def main(page: ft.Page):
-    page.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
-    page.title = "Chat em Tempo Real"
+    page.title = "Real-Time Chat App"
+    page.vertical_alignment = "center"
+    page.horizontal_alignment = "center"
 
+    # Initialize client storage keys
+    CHAT_ROOMS_KEY = "chat_rooms"
+    MESSAGES_KEY_PREFIX = "messages_"
 
-    join_user_name = ft.TextField(
-        label="Introduza o nome do seu utilizador",
-        autofocus=True,
-    )
+    # Function to fetch chat rooms
+    def fetch_chat_rooms():
+        return page.client_storage.get(CHAT_ROOMS_KEY) or []
 
-    create_chat_room = ft.TextField(
-        label="Introduza o nome da sala de chat",
-        autofocus=False,
-    )
+    # Function to create a new chat room
+    def create_chat_room(room_name):
+        chat_rooms = fetch_chat_rooms()
+        if room_name not in chat_rooms:
+            chat_rooms.append(room_name)
+            page.client_storage.set(CHAT_ROOMS_KEY, chat_rooms)
+            # Broadcast the updated chat room list to all clients
+            page.pubsub.send_all(("update_chat_rooms", chat_rooms))
+            return True
+        return False  # Room name already exists
 
-    def create_chat_click(e):
-        if not join_user_name.value.strip():
-            join_user_name.error_text = "Por favor, introduza um valor válido."
-            join_user_name.update()
-            return
+    # Function to fetch messages for a room
+    def fetch_messages(room_name):
+        return page.client_storage.get(f"{MESSAGES_KEY_PREFIX}{room_name}") or []
 
-        if not create_chat_room.value.strip():
-            create_chat_room.error_text = "Por favor, introduza um valor válido."
-            create_chat_room.update()
-            return
+    # Function to send a message
+    def send_message(room_name, user, message):
+        messages = fetch_messages(room_name)
+        messages.append({
+            "user": user,
+            "message": message,
+            "timestamp": datetime.datetime.now().strftime("%H:%M")
+        })
+        page.client_storage.set(f"{MESSAGES_KEY_PREFIX}{room_name}", messages)
+        # Broadcast the new message to all clients in the same room
+        page.pubsub.send_all(("new_message", (room_name, messages[-1])))
 
-        user_name = join_user_name.value.strip()
-        chat_room = create_chat_room.value.strip()
-
-        # Automatically send a join message to the chat
-        page.pubsub.send_all(
-            Message(
-                user_name=user_name,
-                text=f"🟢 {user_name} criou e juntou-se ao chat '{chat_room}'.",
-                message_type="chat_message",
-                chat_room=chat_room,
-            )
-        )
-
-        # Set the user's current chat room
-        page.client_storage.set("user_name", user_name)
-        page.client_storage.set("chat_room", chat_room)
-
-        join_user_name.disabled = True
-        create_chat_room.disabled = True
-        create_button.disabled = True
-        page.update()
-
-    def join_chat_click(e, chat_room: str):
-        user_name = page.client_storage.get("user_name")
-
-        if not user_name:
-            join_user_name.error_text = "Introduza o seu utilizador primeiro!"
-            join_user_name.update()
-            return
-
-        # Set the user's current chat room
-        page.client_storage.set("chat_room", chat_room)
-
-        # Automatically send a join message to the chat
-        page.pubsub.send_all(
-            Message(
-                user_name=user_name,
-                text=f"🟢 {user_name} juntou-se ao chat '{chat_room}'.",
-                message_type="chat_message",
-                chat_room=chat_room,
-            )
-        )
-
-        # Clear the chat history when joining a new room
-        chat.controls.clear()
-        page.update()
-
-    def leave_chat_click(e):
-        user_name = page.client_storage.get("user_name")
-        chat_room = page.client_storage.get("chat_room")
-
-        if user_name and chat_room:
-            page.pubsub.send_all(
-                Message(
-                    user_name=user_name,
-                    text=f"🔴 {user_name} saiu do chat '{chat_room}'.",
-                    message_type="chat_message",
-                    chat_room=chat_room,
+    # Function to handle incoming PubSub messages
+    def on_message(message):
+        msg_type, payload = message
+        if msg_type == "new_message":
+            room_name, msg = payload
+            if current_room == room_name:
+                # Check if the message is from the current user
+                is_current_user = msg["user"] == user_name.value
+                # Add the message to the display with appropriate alignment
+                message_display.controls.append(
+                    ft.Row(
+                        [
+                            ft.Container(
+                                content=ft.Column(
+                                    [
+                                        ft.Text(msg["user"], weight="bold"),
+                                        ft.Text(msg["message"]),
+                                        ft.Text(msg["timestamp"], size=12, color="white"),
+                                    ],
+                                    spacing=2,
+                                ),
+                                bgcolor="#029c9c" if is_current_user else "#2e2e2e",
+                                padding=10,
+                                border_radius=10,
+                            )
+                        ],
+                        alignment=ft.MainAxisAlignment.END if is_current_user else ft.MainAxisAlignment.START,
+                    )
                 )
-            )
-
-            # Remove the user from the chat room
-            page.client_storage.remove("chat_room")
-            join_user_name.disabled = False
-            create_chat_room.disabled = False
-            create_button.disabled = False
+                page.update()
+        elif msg_type == "update_chat_rooms":
+            chat_rooms = payload
+            room_dropdown.options = [ft.dropdown.Option(room) for room in chat_rooms]
             page.update()
 
-    # Create button to create a new chat room
-    create_button = ft.ElevatedButton(text="Criar grupo!", on_click=create_chat_click)
-    leave_button = ft.ElevatedButton(text="Sair do grupo!", on_click=leave_chat_click)
-
-    def send_message_click(e):
-        user_name = page.client_storage.get("user_name")
-        chat_room = page.client_storage.get("chat_room")
-
-        if not user_name:
-            join_user_name.error_text = "Introduza o seu utilizador primeiro!"
-            join_user_name.update()
-            return
-
-        if not chat_room:
-            create_chat_room.error_text = "Introduza a sala de chat primeiro!"
-            create_chat_room.update()
-            return
-
-        if new_message.value.strip():
-            page.pubsub.send_all(
-                Message(
-                    user_name,
-                    new_message.value.strip(),
-                    message_type="chat_message",
-                    chat_room=chat_room,
-                )
-            )
-            new_message.value = ""
-            new_message.focus()
-            page.update()
-
-    def on_message(message: Message):
-        user_name = page.client_storage.get("user_name")
-        chat_room = page.client_storage.get("chat_room")
-
-        if message.chat_room != chat_room:
-            return  # Ignore messages from other chat rooms
-
-        is_current_user = message.user_name == user_name 
-        if message.message_type == "chat_message":
-            if "juntou-se ao chat" in message.text or "saiu do chat" in message.text or "criou e juntou-se ao chat" in message.text:  # Check if it's a join/leave/create message
-                m = ft.Text(
-                    message.text,
-                    italic=True,
-                    weight="bold",
-                    color=ft.Colors.GREEN if "juntou-se" in message.text or "criou" in message.text else ft.Colors.RED,  # Green for join/create, Red for leave
-                )
-            else:
-                m = ChatMessage(message, is_current_user)
-
-        else:
-            m = ft.Text(message.text, italic=True, color=ft.Colors.BLACK45, size=12)
-        chat.controls.append(m)
-        page.update()
-
+    # Subscribe to PubSub
     page.pubsub.subscribe(on_message)
 
-    chat = ft.ListView(
-        expand=True,
-        spacing=10,
-        auto_scroll=True,
-    )
+    chat_rooms = fetch_chat_rooms()
+    room_dropdown = ft.Dropdown(options=[ft.dropdown.Option(room) for room in chat_rooms], width=200)
+    message_display = ft.Column(scroll="auto", expand=True)
+    message_input = ft.TextField(hint_text="Type a message...", expand=True)
+    user_name = ft.TextField(hint_text="Enter your name...", width=200)
+    new_room_input = ft.TextField(hint_text="Enter new chat room name...", width=200)
 
-    new_message = ft.TextField(
-        autofocus=True,
-        shift_enter=True,
-        min_lines=1,
-        max_lines=5,
-        filled=True,
-        expand=True,
-        on_submit=send_message_click,
-    )
+    current_room = None
+
+    def load_messages():
+        if current_room:
+            messages = fetch_messages(current_room)
+            message_display.controls.clear()
+            for msg in messages:
+                is_current_user = msg["user"] == user_name.value
+                message_display.controls.append(
+                    ft.Row(
+                        [
+                            ft.Container(
+                                content=ft.Column(
+                                    [
+                                        ft.Text(msg["user"], weight="bold"),
+                                        ft.Text(msg["message"]),
+                                        ft.Text(msg["timestamp"], size=12, color="white"),
+                                    ],
+                                    spacing=2,
+                                ),
+                                bgcolor="#029c9c" if is_current_user else "#2e2e2e",
+                                padding=10,
+                                border_radius=10,
+                            )
+                        ],
+                        alignment=ft.MainAxisAlignment.END if is_current_user else ft.MainAxisAlignment.START,
+                    )
+                )
+            page.update()
+
+    def on_join_room(e):
+        nonlocal current_room
+        current_room = room_dropdown.value
+        if current_room:
+            load_messages()
+            join_button.text = "Leave Room"
+            join_button.on_click = on_leave_room
+            page.update()
+
+    def on_leave_room(e):
+        nonlocal current_room
+        current_room = None
+        message_display.controls.clear()
+        join_button.text = "Join Room"
+        join_button.on_click = on_join_room
+        page.update()
+
+    def on_send_message(e):
+        room_name = current_room
+        user = user_name.value
+        message = message_input.value
+        if room_name and user and message:
+            send_message(room_name, user, message)
+            message_input.value = ""
+            page.update()
+
+    # Function to handle creating a new chat room
+    def on_create_room(e):
+        new_room_name = new_room_input.value
+        if new_room_name:
+            if create_chat_room(new_room_name):
+                new_room_input.value = ""
+                page.update()
+            else:
+                page.snack_bar = ft.SnackBar(content=ft.Text("Chat room already exists!"))
+                page.snack_bar.open = True
+                page.update()
+
+    join_button = ft.ElevatedButton("Join Room", on_click=on_join_room)
+    send_button = ft.ElevatedButton("Send", on_click=on_send_message)
+    create_room_button = ft.ElevatedButton("Create Room", on_click=on_create_room)
 
     page.add(
-        ft.Row([join_user_name, create_chat_room, create_button, leave_button], alignment=ft.MainAxisAlignment.CENTER),
-        ft.Container(
-            content=chat,
-            border=ft.border.all(1, ft.Colors.OUTLINE),
-            border_radius=5,
-            padding=10,
-            expand=True,
-        ),
-        ft.Row(
-            [
-                new_message,
-                ft.IconButton(
-                    icon=ft.Icons.SEND_ROUNDED,
-                    on_click=send_message_click,
-                ),
-            ]
-        ),
+        ft.Row([user_name, room_dropdown, join_button], alignment="center"),
+        ft.Row([new_room_input, create_room_button], alignment="center"),
+        ft.Container(message_display, border=ft.border.all(1), padding=10, width=600, height=400),
+        ft.Row([message_input, send_button], alignment="center")
     )
 
-
-ft.app(target=main, view=ft.WEB_BROWSER, port=8080)
+ft.app(target=main, view=ft.WEB_BROWSER, port=2020)

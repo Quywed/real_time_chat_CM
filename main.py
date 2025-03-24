@@ -7,15 +7,12 @@ def main(page: ft.Page):
     page.vertical_alignment = "center"
     page.horizontal_alignment = "center"
 
-    # Initialize client storage keys
     CHAT_ROOMS_KEY = "chat_rooms"
     MESSAGES_KEY_PREFIX = "messages_"
 
-    # Function to fetch chat rooms
     def fetch_chat_rooms():
         return page.client_storage.get(CHAT_ROOMS_KEY) or []
 
-    # Function to create a new chat room
     def create_chat_room(room_name):
         chat_rooms = fetch_chat_rooms()
         if room_name not in chat_rooms:
@@ -24,13 +21,11 @@ def main(page: ft.Page):
             # Broadcast the updated chat room list to all clients
             page.pubsub.send_all(("update_chat_rooms", chat_rooms))
             return True
-        return False  # Room name already exists
+        return False
 
-    # Function to fetch messages for a room
     def fetch_messages(room_name):
         return page.client_storage.get(f"{MESSAGES_KEY_PREFIX}{room_name}") or []
 
-    # Function to send a message
     def send_message(room_name, user, message):
         messages = fetch_messages(room_name)
         messages.append({
@@ -39,18 +34,18 @@ def main(page: ft.Page):
             "timestamp": datetime.datetime.now().strftime("%H:%M")
         })
         page.client_storage.set(f"{MESSAGES_KEY_PREFIX}{room_name}", messages)
-        # Broadcast the new message to all clients in the same room
+
         page.pubsub.send_all(("new_message", (room_name, messages[-1])))
 
-    # Function to handle incoming PubSub messages
+
     def on_message(message):
         msg_type, payload = message
         if msg_type == "new_message":
             room_name, msg = payload
             if current_room == room_name:
-                # Check if the message is from the current user
+
                 is_current_user = msg["user"] == user_name.value
-                # Add the message to the display with appropriate alignment
+
                 message_display.controls.append(
                     ft.Row(
                         [
@@ -77,7 +72,7 @@ def main(page: ft.Page):
             room_dropdown.options = [ft.dropdown.Option(room) for room in chat_rooms]
             page.update()
 
-    # Subscribe to PubSub
+
     page.pubsub.subscribe(on_message)
 
     chat_rooms = fetch_chat_rooms()

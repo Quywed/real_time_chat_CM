@@ -29,44 +29,99 @@ def main(page: ft.Page):
     def send_message(room_name, user, message):
         messages = fetch_messages(room_name)
         messages.append({
+            "id": len(messages),  # Add a simple ID based on message position
             "user": user,
             "message": message,
             "timestamp": datetime.datetime.now().strftime("%H:%M")
         })
         page.client_storage.set(f"{MESSAGES_KEY_PREFIX}{room_name}", messages)
-
         page.pubsub.send_all(("new_message", (room_name, messages[-1])))
 
 
+    def edit_message(room_name, message_id, new_message):
+        messages = fetch_messages(room_name)
+        for msg in messages:
+            if msg["id"] == message_id:
+                msg["message"] = new_message
+                msg["timestamp"] = f"{datetime.datetime.now().strftime('%H:%M')} (edited)"
+                page.client_storage.set(f"{MESSAGES_KEY_PREFIX}{room_name}", messages)
+                page.pubsub.send_all(("edit_message", (room_name, msg)))
+                break
+
+
+    def create_message_row(msg, is_current_user):
+        message_row = ft.Row(
+            [
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Text(msg["user"], weight="bold"),
+                            ft.Text(msg["message"], key=f"message_{msg['id']}"),
+                            ft.Text(msg["timestamp"], size=12, color="white"),
+                        ],
+                        spacing=2,
+                    ),
+                    bgcolor="#029c9c" if is_current_user else "#2e2e2e",
+                    padding=10,
+                    border_radius=10,
+                )
+            ],
+            alignment=ft.MainAxisAlignment.END if is_current_user else ft.MainAxisAlignment.START,
+        )
+        
+        if is_current_user:
+            edit_field = ft.TextField(visible=False, value=msg["message"])
+            
+            def toggle_edit(e):
+                edit_field.visible = not edit_field.visible
+                page.update()
+                
+            def save_edit(e):
+                if edit_field.value != msg["message"]:
+                    edit_message(current_room, msg["id"], edit_field.value)
+                edit_field.visible = False
+                page.update()
+                
+            edit_button = ft.IconButton(
+                icon=ft.icons.EDIT,
+                on_click=toggle_edit,
+                icon_color="white",
+            )
+            
+            save_button = ft.IconButton(
+                icon=ft.icons.SAVE,
+                on_click=save_edit,
+                icon_color="white",
+            )
+            
+            message_row.controls.append(
+                ft.Column([
+                    ft.Row([edit_button, save_button]),
+                    edit_field
+                ])
+            )
+        
+        return message_row
+    
+    # Update the on_message function to use create_message_row
     def on_message(message):
         msg_type, payload = message
         if msg_type == "new_message":
             room_name, msg = payload
             if current_room == room_name:
-
                 is_current_user = msg["user"] == user_name.value
-
-                message_display.controls.append(
-                    ft.Row(
-                        [
-                            ft.Container(
-                                content=ft.Column(
-                                    [
-                                        ft.Text(msg["user"], weight="bold"),
-                                        ft.Text(msg["message"]),
-                                        ft.Text(msg["timestamp"], size=12, color="white"),
-                                    ],
-                                    spacing=2,
-                                ),
-                                bgcolor="#029c9c" if is_current_user else "#2e2e2e",
-                                padding=10,
-                                border_radius=10,
-                            )
-                        ],
-                        alignment=ft.MainAxisAlignment.END if is_current_user else ft.MainAxisAlignment.START,
-                    )
-                )
+                message_display.controls.append(create_message_row(msg, is_current_user))
                 page.update()
+        elif msg_type == "edit_message":
+            room_name, msg = payload
+            if current_room == room_name:
+                for control in message_display.controls:
+                    message_text = control.controls[0].content.controls[1]
+                    if message_text.key == f"message_{msg['id']}":
+                        message_text.value = msg["message"]
+                        control.controls[0].content.controls[2].value = msg["timestamp"]
+                        page.update()
+                        break
         elif msg_type == "update_chat_rooms":
             chat_rooms = payload
             room_dropdown.options = [ft.dropdown.Option(room) for room in chat_rooms]
@@ -90,26 +145,7 @@ def main(page: ft.Page):
             message_display.controls.clear()
             for msg in messages:
                 is_current_user = msg["user"] == user_name.value
-                message_display.controls.append(
-                    ft.Row(
-                        [
-                            ft.Container(
-                                content=ft.Column(
-                                    [
-                                        ft.Text(msg["user"], weight="bold"),
-                                        ft.Text(msg["message"]),
-                                        ft.Text(msg["timestamp"], size=12, color="white"),
-                                    ],
-                                    spacing=2,
-                                ),
-                                bgcolor="#029c9c" if is_current_user else "#2e2e2e",
-                                padding=10,
-                                border_radius=10,
-                            )
-                        ],
-                        alignment=ft.MainAxisAlignment.END if is_current_user else ft.MainAxisAlignment.START,
-                    )
-                )
+                message_display.controls.append(create_message_row(msg, is_current_user))
             page.update()
 
     def on_join_room(e):

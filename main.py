@@ -31,7 +31,6 @@ def main(page: ft.Page):
         if users is None:
             return []
         try:
-            # Handle both string and list formats for backward compatibility
             if isinstance(users, str):
                 return eval(users) if users else []
             return users if isinstance(users, list) else []
@@ -42,11 +41,9 @@ def main(page: ft.Page):
         if not username:
             return False
         users = get_registered_users()
-        # Clean the username to prevent injection
         clean_username = username.replace("'", "").replace('"', '').replace("\\", "")
         if clean_username not in users:
             users.append(clean_username)
-            # Store as a proper JSON-serializable list
             page.client_storage.set(REGISTERED_USERS_KEY, users)
             page.pubsub.send_all(("update_users", users))
             return True
@@ -57,7 +54,7 @@ def main(page: ft.Page):
             users = get_registered_users()
         users_view.controls[1].controls.clear()
         for user in sorted(users):
-            if user != user_name.value:  # Don't show current user
+            if user != user_name.value:
                 users_view.controls[1].controls.append(
                     ft.ListTile(
                         title=ft.Text(user),
@@ -70,7 +67,6 @@ def main(page: ft.Page):
 
     def start_private_chat(e, recipient):
         nonlocal current_room, is_private_chat
-        # Sort usernames alphabetically to ensure consistent room naming
         participants = sorted([user_name.value, recipient])
         current_room = f"private_{participants[0]}_{participants[1]}"
         is_private_chat = True
@@ -142,7 +138,7 @@ def main(page: ft.Page):
         prefix = PRIVATE_MESSAGES_KEY_PREFIX if is_private else PUBLIC_MESSAGES_KEY_PREFIX
         return page.client_storage.get(f"{prefix}{room_name}") or []
 
-    def send_message(room_name, user, message, is_private=False):
+    def send_message(room_name, user, message, is_private=False, is_system=False):
         prefix = PRIVATE_MESSAGES_KEY_PREFIX if is_private else PUBLIC_MESSAGES_KEY_PREFIX
         messages = fetch_messages(room_name, is_private)
         messages.append({
@@ -150,12 +146,32 @@ def main(page: ft.Page):
             "user": user,
             "message": message,
             "timestamp": datetime.datetime.now().strftime("%H:%M"),
-            "is_private": is_private
+            "is_private": is_private,
+            "is_system": is_system
         })
         page.client_storage.set(f"{prefix}{room_name}", messages)
         page.pubsub.send_all(("new_message", (room_name, messages[-1], is_private)))
 
     def create_message_row(msg, is_current_user):
+        if msg.get("is_system"):
+            # System message styling
+            return ft.Row(
+                [
+                    ft.Container(
+                        content=ft.Column(
+                            [
+                                ft.Text(msg["message"], size=12, color="gray", italic=True),
+                            ],
+                            spacing=2,
+                            horizontal_alignment="center"
+                        ),
+                        padding=5,
+                        width=600
+                    )
+                ],
+                alignment=ft.MainAxisAlignment.CENTER
+            )
+        
         bg_color = "#029c9c" if is_current_user else "#2e2e2e"
         if msg.get("is_private"):
             bg_color = "#5c029c" if is_current_user else "#4e2e5e"
@@ -179,7 +195,7 @@ def main(page: ft.Page):
             alignment=ft.MainAxisAlignment.END if is_current_user else ft.MainAxisAlignment.START,
         )
         
-        if is_current_user:
+        if is_current_user and not msg.get("is_system"):
             edit_field = ft.TextField(visible=False, value=msg["message"])
             
             def toggle_edit(e):
@@ -233,24 +249,19 @@ def main(page: ft.Page):
         msg_type, payload = message
         if msg_type == "new_message":
             room_name, msg, is_private = payload
-            # For public messages in current room
             if not is_private and current_room == room_name:
                 is_current_user = msg["user"] == user_name.value
                 message_display.controls.append(create_message_row(msg, is_current_user))
                 page.update()
-            # For private messages
             elif is_private:
-                # Check if this private chat is between current user and the other participant
-                participants = room_name.split('_')[1:]  # Gets the two usernames from "private_user1_user2"
+                participants = room_name.split('_')[1:]
                 if user_name.value in participants:
-                    # Only show if we're in this specific private chat OR if it's a new message in our inbox
                     if current_room == room_name or current_room is None:
                         is_current_user = msg["user"] == user_name.value
                         message_display.controls.append(create_message_row(msg, is_current_user))
                         page.update()
         elif msg_type == "edit_message":
             room_name, msg, is_private = payload
-            # Similar filtering for edited messages
             if not is_private and current_room == room_name:
                 for control in message_display.controls:
                     message_text = control.controls[0].content.controls[1]
@@ -289,7 +300,7 @@ def main(page: ft.Page):
             create_user_button.disabled = True
             room_dropdown.disabled = False
             join_button.disabled = False
-            if add_registered_user(user_name.value.strip()):  # Clean the username
+            if add_registered_user(user_name.value.strip()):
                 page.snack_bar = ft.SnackBar(content=ft.Text(f"Welcome, {user_name.value}!"))
                 page.snack_bar.open = True
             page.update()
@@ -302,14 +313,12 @@ def main(page: ft.Page):
         current = page.client_storage.get(REGISTERED_USERS_KEY)
         if isinstance(current, str):
             try:
-                # Try to parse the string as a list
                 cleaned = eval(current) if current else []
                 if isinstance(cleaned, list):
                     page.client_storage.set(REGISTERED_USERS_KEY, cleaned)
                     return cleaned
             except:
                 pass
-            # If parsing fails, start fresh
             page.client_storage.set(REGISTERED_USERS_KEY, [])
             return []
         return current if isinstance(current, list) else []
@@ -325,6 +334,9 @@ def main(page: ft.Page):
 
     def on_join_room(e):
         nonlocal current_room, is_private_chat
+        if current_room:  # If already in a room, leave it first
+            send_message(current_room, "System", f"{user_name.value} left the room", is_private=False, is_system=True)
+        
         current_room = room_dropdown.value
         is_private_chat = False
         private_chat_header.visible = False
@@ -333,10 +345,13 @@ def main(page: ft.Page):
             load_messages()
             join_button.text = "Leave Room"
             join_button.on_click = on_leave_room
+            send_message(current_room, "System", f"{user_name.value} joined the room", is_private=False, is_system=True)
             page.update()
 
     def on_leave_room(e):
         nonlocal current_room, is_private_chat
+        if current_room:
+            send_message(current_room, "System", f"{user_name.value} left the room", is_private=False, is_system=True)
         current_room = None
         is_private_chat = False
         private_chat_header.visible = False
@@ -354,6 +369,9 @@ def main(page: ft.Page):
             send_message(room_name, user, message, is_private_chat)
             message_input.value = ""
             page.update()
+
+    def fetch_chat_rooms():
+        return page.client_storage.get(CHAT_ROOMS_KEY) or []
 
     def create_chat_room(room_name):
         chat_rooms = fetch_chat_rooms()

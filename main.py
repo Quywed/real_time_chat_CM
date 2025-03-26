@@ -6,6 +6,7 @@ def main(page: ft.Page):
     page.title = "Real-Time Chat App"
     page.vertical_alignment = "center"
     page.horizontal_alignment = "center"
+    page.scroll = "auto"
 
     # Define our views
     chat_view = ft.Column()

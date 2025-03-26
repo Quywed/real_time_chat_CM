@@ -224,6 +224,11 @@ def main(page: ft.Page):
                 page.pubsub.send_all(("edit_message", (room_name, msg, is_private)))
                 break
 
+    def clear_messages(room_name, is_private=False):
+        prefix = PRIVATE_MESSAGES_KEY_PREFIX if is_private else PUBLIC_MESSAGES_KEY_PREFIX
+        page.client_storage.set(f"{prefix}{room_name}", [])
+        page.pubsub.send_all(("clear_messages", (room_name, is_private)))
+
     def on_message(message):
         msg_type, payload = message
         if msg_type == "new_message":
@@ -262,6 +267,11 @@ def main(page: ft.Page):
                         control.controls[0].content.controls[2].value = msg["timestamp"]
                         page.update()
                         break
+        elif msg_type == "clear_messages":
+            room_name, is_private = payload
+            if (not is_private and current_room == room_name) or (is_private and current_room == room_name):
+                message_display.controls.clear()
+                page.update()
         elif msg_type == "update_chat_rooms":
             chat_rooms = payload
             room_dropdown.options = [ft.dropdown.Option(room) for room in chat_rooms]
@@ -345,9 +355,6 @@ def main(page: ft.Page):
             message_input.value = ""
             page.update()
 
-    def fetch_chat_rooms():
-        return page.client_storage.get(CHAT_ROOMS_KEY) or []
-
     def create_chat_room(room_name):
         chat_rooms = fetch_chat_rooms()
         if room_name not in chat_rooms:
@@ -370,9 +377,13 @@ def main(page: ft.Page):
 
     join_button = ft.ElevatedButton("Join Room", on_click=on_join_room, disabled=True)
     send_button = ft.ElevatedButton("Send", on_click=on_send_message)
+    clear_button = ft.ElevatedButton(
+        "Clear Chat",
+        on_click=lambda e: clear_messages(current_room, is_private_chat) if current_room else None,
+        tooltip="Clear all messages in this chat"
+    )
     create_room_button = ft.ElevatedButton("Create Room", on_click=on_create_room)
     create_user_button = ft.ElevatedButton("Create User", on_click=on_create_user)
-
 
     chat_view.controls = [
         ft.Row([user_name, create_user_button], alignment="center"),
@@ -380,9 +391,8 @@ def main(page: ft.Page):
         ft.Row([new_room_input, create_room_button], alignment="center"),
         private_chat_header,
         ft.Container(message_display, border=ft.border.all(1), padding=10, width=600, height=400),
-        ft.Row([message_input, send_button], alignment="center")
+        ft.Row([message_input, send_button, clear_button], alignment="center")
     ]
-
 
     page.add(
         ft.Row([nav_button, back_to_public_button], alignment="end"),
@@ -390,9 +400,7 @@ def main(page: ft.Page):
         users_view
     )
 
-
     update_users_view()
-
     cleanup_storage()
 
 ft.app(target=main, view=ft.WEB_BROWSER, port=2020)

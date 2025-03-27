@@ -3,10 +3,12 @@ import datetime
 
 # Main Flet app
 def main(page: ft.Page):
+    # At the beginning of main function, update page settings
     page.title = "Real-Time Chat App"
-    page.vertical_alignment = "center"
-    page.horizontal_alignment = "center"
+    page.vertical_alignment = ft.MainAxisAlignment.CENTER
+    page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
     page.scroll = "auto"
+    page.padding = 20
 
     # Define our views
     chat_view = ft.Column()
@@ -404,19 +406,43 @@ def main(page: ft.Page):
     create_room_button = ft.ElevatedButton("Create Room", on_click=on_create_room)
     create_user_button = ft.ElevatedButton("Create User", on_click=on_create_user)
 
+    # Update chat_view.controls with centered alignment
     chat_view.controls = [
-        ft.Row([user_name, create_user_button], alignment="center"),
-        ft.Row([room_dropdown, join_button], alignment="center"),
-        ft.Row([new_room_input, create_room_button], alignment="center"),
-        private_chat_header,
-        ft.Container(message_display, border=ft.border.all(1), padding=10, width=600, height=400),
-        ft.Row([message_input, send_button, clear_button], alignment="center")
+        ft.Column(
+            [
+                ft.Row([user_name, create_user_button], alignment=ft.MainAxisAlignment.CENTER),
+                ft.Row([room_dropdown, join_button], alignment=ft.MainAxisAlignment.CENTER),
+                ft.Row([new_room_input, create_room_button], alignment=ft.MainAxisAlignment.CENTER),
+                private_chat_header,
+                ft.Container(
+                    message_display,
+                    border=ft.border.all(1),
+                    padding=10,
+                    width=600,
+                    height=400,
+                    alignment=ft.alignment.center
+                ),
+                ft.Row(
+                    [message_input, send_button, clear_button],
+                    alignment=ft.MainAxisAlignment.CENTER
+                )
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            alignment=ft.MainAxisAlignment.CENTER,
+        )
     ]
 
+    # Update the final page.add with center alignment
     page.add(
-        ft.Row([nav_button, back_to_public_button], alignment="end"),
-        chat_view,
-        users_view
+        ft.Column(
+            [
+                ft.Row([nav_button, back_to_public_button], alignment=ft.MainAxisAlignment.END),
+                chat_view,
+                users_view
+            ],
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            alignment=ft.MainAxisAlignment.CENTER,
+        )
     )
 
     update_users_view()

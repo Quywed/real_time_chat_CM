@@ -265,22 +265,34 @@ def main(page: ft.Page):
                         page.update()
         elif msg_type == "edit_message":
             room_name, msg, is_private = payload
+            # Skip system messages (they can't be edited)
+            if msg.get("is_system"):
+                return
+                
             if not is_private and current_room == room_name:
                 for control in message_display.controls:
-                    message_text = control.controls[0].content.controls[1]
-                    if message_text.key == f"message_{msg['id']}":
-                        message_text.value = msg["message"]
-                        control.controls[0].content.controls[2].value = msg["timestamp"]
-                        page.update()
-                        break
+                    # Skip rows that don't have the expected structure (like system messages)
+                    if (len(control.controls) > 0 and 
+                        hasattr(control.controls[0], 'content') and 
+                        len(control.controls[0].content.controls) > 2):
+                        message_text = control.controls[0].content.controls[1]
+                        if hasattr(message_text, 'key') and message_text.key == f"message_{msg['id']}":
+                            message_text.value = msg["message"]
+                            control.controls[0].content.controls[2].value = msg["timestamp"]
+                            page.update()
+                            break
             elif is_private and user_name.value in room_name.split('_')[1:]:
                 for control in message_display.controls:
-                    message_text = control.controls[0].content.controls[1]
-                    if message_text.key == f"message_{msg['id']}":
-                        message_text.value = msg["message"]
-                        control.controls[0].content.controls[2].value = msg["timestamp"]
-                        page.update()
-                        break
+                    # Skip rows that don't have the expected structure (like system messages)
+                    if (len(control.controls) > 0 and 
+                        hasattr(control.controls[0], 'content') and 
+                        len(control.controls[0].content.controls) > 2):
+                        message_text = control.controls[0].content.controls[1]
+                        if hasattr(message_text, 'key') and message_text.key == f"message_{msg['id']}":
+                            message_text.value = msg["message"]
+                            control.controls[0].content.controls[2].value = msg["timestamp"]
+                            page.update()
+                            break
         elif msg_type == "clear_messages":
             room_name, is_private = payload
             if (not is_private and current_room == room_name) or (is_private and current_room == room_name):
